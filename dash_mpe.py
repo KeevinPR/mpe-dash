@@ -2,7 +2,16 @@ import dash
 import dash_bootstrap_components as dbc
 
 # Initialize the Dash app with a Bootstrap theme for consistent styling
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+# Global variables
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[
+        dbc.themes.BOOTSTRAP,
+        'https://bayes-interpret.com/Evidence/MPEDash/assets/liquid-glass.css'  # Apple Liquid Glass CSS
+    ],
+    requests_pathname_prefix='/Evidence/MPEDash/',
+    suppress_callback_exceptions=True
+)
 app.title = "MPE Dash App"  # Title shown in the browser tab
 
 # Import the layout and callback registrations
@@ -18,6 +27,5 @@ register_callbacks(app)
 # Expose the server for WSGI (e.g., Gunicorn)
 server = app.server
 
-# Run the app for local testing (will not execute in production when using Gunicorn)
-if __name__ == "__main__":
-    app.run_server(debug=True)
+if __name__ == '__main__':
+    app.run_server(debug=True, host='0.0.0.0', port=8057)
