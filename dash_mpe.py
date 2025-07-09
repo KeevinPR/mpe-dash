@@ -939,4 +939,4 @@ if SESSION_MANAGEMENT_AVAILABLE:
         return n_intervals
 
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0', port=8057)
+    app.run(debug=True, host='0.0.0.0', port=8057)
