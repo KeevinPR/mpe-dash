@@ -1,4 +1,6 @@
 import base64, json
+import tempfile
+import os
 from io import BytesIO
 from pgmpy.models import BayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
@@ -19,14 +21,22 @@ def load_model_from_bytes(content_bytes: bytes, filename: str) -> BayesianNetwor
         content_str = content_bytes.decode("utf-8")
         if fname.endswith(".bif"):
             # Use BIFReader for .bif files
-            with open("temp_network.bif", "w") as tempf:
-                tempf.write(content_str)
-            model = BIFReader("temp_network.bif").get_model()
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.bif', delete=False) as temp_file:
+                temp_file.write(content_str)
+                temp_file_path = temp_file.name
+            try:
+                model = BIFReader(temp_file_path).get_model()
+            finally:
+                os.unlink(temp_file_path)  # Clean up temp file
         else:
             # Use XMLBIFReader for .xml files
-            with open("temp_network.xml", "w") as tempf:
-                tempf.write(content_str)
-            model = XMLBIFReader("temp_network.xml").get_model()
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as temp_file:
+                temp_file.write(content_str)
+                temp_file_path = temp_file.name
+            try:
+                model = XMLBIFReader(temp_file_path).get_model()
+            finally:
+                os.unlink(temp_file_path)  # Clean up temp file
         return model
     elif fname.endswith(".json"):
         # Load from a JSON representation of the network
