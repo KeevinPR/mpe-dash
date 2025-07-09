@@ -38,9 +38,16 @@ except ImportError as e:
 from mpe_solver import load_model_from_bytes, calculate_joint_probability
 
 warnings.filterwarnings("ignore")
+
+warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+print("🚀 MPE DASHBOARD STARTING...")
+print(f"Python: {sys.version}")
+print(f"Dash version: {dash.__version__}")
+print(f"Session management: {SESSION_MANAGEMENT_AVAILABLE}")
 
 # Start the global session manager
 if SESSION_MANAGEMENT_AVAILABLE:
@@ -58,6 +65,7 @@ app = dash.Dash(
 )
 app.title = "MPE Dash App"
 server = app.server
+print("✅ Dash app created")
 
 # Safari Compatibility CSS Fix for Liquid Glass Effects
 SAFARI_FIX_CSS = """
@@ -159,6 +167,7 @@ else:
     session_components = html.Div()
 
 # App layout
+print("🎨 Creating layout...")
 app.layout = html.Div([
     # Safari Compatibility Fix
     html.Div([
@@ -453,6 +462,7 @@ app.layout = html.Div([
         trigger="hover",
     ),
 ])
+print("✅ Layout complete!")
 
 def get_model(stored_network):
     """Use cached model if available, otherwise parse from stored_network"""
@@ -475,10 +485,9 @@ def get_model(stored_network):
             cached_model = model
             return model
         else:
-            logger.error("Invalid network_type in stored_network.")
             return None
     except Exception as e:
-        logger.error(f"Could not parse the network: {e}")
+        print(f"❌ Model parsing error: {e}")
         return None
 
 # Callbacks start here...
@@ -496,6 +505,8 @@ def get_model(stored_network):
 )
 def load_network(contents, filename, use_default_value):
     """Load network and update all dependent components"""
+    print(f"📞 CALLBACK: use_default={use_default_value}, has_file={contents is not None}")
+    
     global cached_model
     cached_model = None
     
@@ -529,7 +540,7 @@ def load_network(contents, filename, use_default_value):
             
             viz_style = {'display': 'block'}
             msg = f"Successfully loaded network from {filename}."
-            logger.info(msg)
+            print(f"✅ File loaded: {filename}")
             
             return (
                 {
@@ -545,22 +556,27 @@ def load_network(contents, filename, use_default_value):
                 viz_style
             )
         except Exception as e:
-            logger.error(f"Error loading network from {filename}: {e}")
+            print(f"❌ File error: {e}")
             return None, f"Error loading {filename}: {e}", use_default_value, [], empty_evidence, [], viz_style
     
     # PRIORITY 2: Handle default checkbox
     if 'default' in use_default_value:
+        print("✅ DEFAULT CHECKBOX CHECKED!")
         try:
             # Use relative path from current directory
             current_dir = os.path.dirname(os.path.abspath(__file__))
             default_path = os.path.join(current_dir, 'models', 'asia.bif')
+            
             if not os.path.exists(default_path):
-                # Fallback to check current working directory
                 default_path = 'models/asia.bif'
+            
+            print(f"📁 Loading: {default_path}")
             
             with open(default_path, 'rb') as f:
                 content_bytes = f.read()
+            
             model = load_model_from_bytes(content_bytes, 'asia.bif')
+            print(f"✅ Model loaded: {len(model.nodes())} nodes")
             
             variables = sorted(list(model.nodes()))
             var_options = [{"label": var, "value": var} for var in variables]
@@ -577,8 +593,8 @@ def load_network(contents, filename, use_default_value):
             
             viz_style = {'display': 'block'}
             msg = "Using default network: asia.bif"
-            logger.info(msg)
             
+            print("🔄 Returning successful result")
             return (
                 {
                     'network_name': 'asia.bif',
@@ -592,9 +608,12 @@ def load_network(contents, filename, use_default_value):
                 elements,
                 viz_style
             )
+            
         except Exception as e:
-            logger.error(f"Error reading default network: {e}")
+            print(f"❌ ERROR: {e}")
             return None, f"Error reading default network: {e}", use_default_value, [], empty_evidence, [], viz_style
+    else:
+        print("❌ Default checkbox NOT checked")
 
     return None, "No network selected.", use_default_value, [], empty_evidence, [], viz_style
 
@@ -685,7 +704,7 @@ def display_evidence_list(evidence_list):
 
 @app.callback(
     Output('mpe-results', 'children'),
-    Output('cytoscape-network', 'elements'),
+    Output('cytoscape-network', 'elements', allow_duplicate=True),
     Output('notification-store', 'data'),
     Input('run-mpe-button', 'n_clicks'),
     State('stored-network', 'data'),
@@ -939,4 +958,15 @@ if SESSION_MANAGEMENT_AVAILABLE:
         return n_intervals
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8057)
+    logger.info("=== STARTING MPE DASHBOARD APPLICATION ===")
+    logger.info("Running in standalone mode")
+    try:
+        app.run(debug=True, host='0.0.0.0', port=8057)
+    except Exception as e:
+        logger.error(f"❌ Error starting application: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise
+else:
+    logger.info("=== MPE DASHBOARD LOADED AS MODULE ===")
+    logger.info("Ready to serve requests")
