@@ -298,49 +298,39 @@ app.layout = html.Div([
                     ),
                 ], style={"textAlign": "center", "position": "relative"}),
                 
+                # Buttons for bulk selection
                 html.Div([
                     dbc.Button(
-                        "Clear All Evidence",
+                        "Select All",
+                        id="select-all-evidence",
+                        color="outline-primary",
+                        size="sm",
+                        style={'marginRight': '10px'}
+                    ),
+                    dbc.Button(
+                        "Clear All",
                         id="clear-evidence",
                         color="outline-secondary",
                         size="sm"
                     )
                 ], style={'textAlign': 'center', 'marginBottom': '15px'}),
                 
-                html.Div([
-                    html.Div([
-                        html.Label("Evidence Variable:"),
-                        dbc.Select(
-                            id="evidence-variable",
-                            options=[],
-                            value=None,
-                            placeholder="Select variable",
-                            style={'marginBottom': '10px'}
-                        )
-                    ], style={'width': '48%', 'display': 'inline-block', 'marginRight': '2%'}),
-                    html.Div([
-                        html.Label("Evidence Value:"),
-                        dbc.Select(
-                            id="evidence-value",
-                            options=[],
-                            value=None,
-                            placeholder="Select value",
-                            disabled=True,
-                            style={'marginBottom': '10px'}
-                        )
-                    ], style={'width': '48%', 'display': 'inline-block'}),
-                ], style={'textAlign': 'center'}),
+                # Checkbox container for evidence variables
+                html.Div(
+                    id='evidence-checkbox-container',
+                    style={
+                        'maxHeight': '200px',
+                        'overflowY': 'auto',
+                        'border': '1px solid #ddd',
+                        'borderRadius': '5px',
+                        'padding': '10px',
+                        'margin': '0 auto',
+                        'width': '80%',
+                        'backgroundColor': '#f8f9fa'
+                    }
+                ),
                 
-                html.Div([
-                    dbc.Button(
-                        "Add Evidence",
-                        id="add-evidence",
-                        color="primary",
-                        size="sm"
-                    )
-                ], style={'textAlign': 'center', 'marginBottom': '15px'}),
-                
-                html.Div(id='evidence-list', style={'textAlign': 'center', 'marginTop': '10px'}),
+                html.Div(id='evidence-values-container')
             ]),
 
             # (3) Run MPE
@@ -396,7 +386,6 @@ app.layout = html.Div([
 
             # Hidden stores
             dcc.Store(id='stored-network'),
-            dcc.Store(id='evidence-store', data=[]),
         ])
     ),
     
@@ -495,8 +484,6 @@ def get_model(stored_network):
     Output('stored-network', 'data'),
     Output('upload-status', 'children'),
     Output('use-default-network', 'value'),
-    Output('evidence-variable', 'options'),
-    Output('evidence-store', 'data'),
     Output('cytoscape-network', 'elements'),
     Output('network-visualization', 'style'),
     Input('upload-bif', 'contents'),
@@ -510,9 +497,6 @@ def load_network(contents, filename, use_default_value):
     global cached_model
     cached_model = None
     
-    # Clear evidence when loading new network
-    empty_evidence = []
-    
     # Default network visualization style (hidden)
     viz_style = {'display': 'none'}
     
@@ -522,10 +506,6 @@ def load_network(contents, filename, use_default_value):
         try:
             content_bytes = base64.b64decode(content_string)
             model = load_model_from_bytes(content_bytes, filename)
-            
-            # Prepare variable options
-            variables = sorted(list(model.nodes()))
-            var_options = [{"label": var, "value": var} for var in variables]
             
             # Prepare network graph elements
             elements = []
@@ -550,14 +530,12 @@ def load_network(contents, filename, use_default_value):
                 },
                 msg,
                 [],  # Uncheck default
-                var_options,
-                empty_evidence,
                 elements,
                 viz_style
             )
         except Exception as e:
             print(f"❌ File error: {e}")
-            return None, f"Error loading {filename}: {e}", use_default_value, [], empty_evidence, [], viz_style
+            return None, f"Error loading {filename}: {e}", use_default_value, [], viz_style
     
     # PRIORITY 2: Handle default checkbox
     if 'default' in use_default_value:
@@ -577,9 +555,6 @@ def load_network(contents, filename, use_default_value):
             
             model = load_model_from_bytes(content_bytes, 'asia.bif')
             print(f"✅ Model loaded: {len(model.nodes())} nodes")
-            
-            variables = sorted(list(model.nodes()))
-            var_options = [{"label": var, "value": var} for var in variables]
             
             elements = []
             for var in model.nodes():
@@ -603,104 +578,130 @@ def load_network(contents, filename, use_default_value):
                 },
                 msg,
                 use_default_value,
-                var_options,
-                empty_evidence,
                 elements,
                 viz_style
             )
             
         except Exception as e:
             print(f"❌ ERROR: {e}")
-            return None, f"Error reading default network: {e}", use_default_value, [], empty_evidence, [], viz_style
+            return None, f"Error reading default network: {e}", use_default_value, [], viz_style
     else:
         print("❌ Default checkbox NOT checked")
 
-    return None, "No network selected.", use_default_value, [], empty_evidence, [], viz_style
+    return None, "No network selected.", use_default_value, [], viz_style
 
+# Populate the evidence dropdown only if a model is available
 @app.callback(
-    Output("evidence-value", "options"),
-    Output("evidence-value", "disabled"),
-    Input("evidence-variable", "value"),
+    Output('evidence-checkbox-container', 'children'),
+    Input('stored-network', 'data')
+)
+def update_evidence_variables(stored_network):
+    m = get_model(stored_network)
+    if not m:
+        return html.Div("No network loaded", style={'textAlign': 'center', 'color': '#666'})
+    
+    variables = sorted(list(m.nodes()))
+    if not variables:
+        return html.Div("No variables found", style={'textAlign': 'center', 'color': '#666'})
+    
+    # Create checkboxes in a grid layout
+    checkboxes = []
+    for i, var in enumerate(variables):
+        checkboxes.append(
+            html.Div([
+                dcc.Checklist(
+                    id={'type': 'evidence-checkbox', 'index': var},
+                    options=[{'label': f' {var}', 'value': var}],
+                    value=[],
+                    style={'margin': '0'}
+                )
+            ], style={'display': 'inline-block', 'width': '50%', 'marginBottom': '5px'})
+        )
+    
+    return html.Div(checkboxes, style={'columnCount': '2', 'columnGap': '20px'})
+
+# Build the dynamic evidence-value dropdowns
+@app.callback(
+    Output('evidence-values-container', 'children'),
+    Input({'type': 'evidence-checkbox', 'index': ALL}, 'value'),
     State('stored-network', 'data')
 )
-def update_evidence_value_options(selected_var, stored_network):
-    """Update evidence value options when variable is selected"""
-    if selected_var is None or selected_var == "":
-        return [], True
+def update_evidence_values(checkbox_values, stored_network):
+    # Get selected evidence variables from checkboxes
+    ctx = dash.callback_context
+    if not ctx.inputs:
+        return []
     
-    model = get_model(stored_network)
-    if model is None or selected_var not in model.nodes():
-        return [], True
+    # Extract selected variables
+    evidence_vars = []
+    for input_info in ctx.inputs_list[0]:
+        if input_info['value']:  # If checkbox is checked
+            var_name = input_info['id']['index']
+            evidence_vars.append(var_name)
     
-    cpd = model.get_cpds(selected_var)
-    options = []
-    if cpd:
-        if hasattr(cpd, "state_names") and cpd.state_names and selected_var in cpd.state_names:
-            state_names = cpd.state_names[selected_var]
-            options = [{"label": str(name), "value": str(name)} for name in state_names]
+    if not evidence_vars:
+        return []
+
+    m = get_model(stored_network)
+    if m is None:
+        return []
+
+    children = []
+    for var in evidence_vars:
+        cpd = m.get_cpds(var)
+        if hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
+            states = cpd.state_names[var]
         else:
-            card = model.get_cardinality(selected_var)
-            options = [{"label": str(i), "value": str(i)} for i in range(card)]
-    else:
-        return [], True
-    
-    return options, False
+            card = m.get_cardinality(var)
+            states = [str(i) for i in range(card)]
+        
+        children.append(
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Label(
+                                f"Select value for {var}",
+                                style={'width': '40%', 'textAlign': 'right', 'paddingRight': '10px'}
+                            ),
+                            dbc.Select(
+                                id={'type': 'evidence-value-dropdown', 'index': var},
+                                options=[{'label': s, 'value': s} for s in states],
+                                value=states[0] if states else None,
+                                style={'width': '60%'}
+                            )
+                        ],
+                        style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}
+                    )
+                ],
+                style={'marginBottom': '10px', 'width': '50%', 'margin': '0 auto'}
+            )
+        )
+    return children
 
+# Callbacks for evidence selection buttons
 @app.callback(
-    Output("evidence-store", "data", allow_duplicate=True),
-    Input("add-evidence", "n_clicks"),
-    State("evidence-variable", "value"),
-    State("evidence-value", "value"),
-    State("evidence-store", "data"),
+    Output({'type': 'evidence-checkbox', 'index': ALL}, 'value'),
+    [Input('select-all-evidence', 'n_clicks'),
+     Input('clear-evidence', 'n_clicks')],
+    [State({'type': 'evidence-checkbox', 'index': ALL}, 'id')],
     prevent_initial_call=True
 )
-def add_evidence(n_clicks, var, val, evidence_list):
-    """Add evidence to the list"""
-    if n_clicks is None or n_clicks == 0:
-        return evidence_list
-    
-    if not var or val is None:
-        return evidence_list
-    
-    evidence_list = evidence_list or []
-    # Update existing or add new
-    for ev in evidence_list:
-        if ev["var"] == var:
-            ev["value"] = val
-            break
-    else:
-        evidence_list.append({"var": var, "value": val})
-    
-    return evidence_list
-
-@app.callback(
-    Output("evidence-store", "data", allow_duplicate=True),
-    Input("clear-evidence", "n_clicks"),
-    prevent_initial_call=True
-)
-def clear_evidence(n_clicks):
-    """Clear all evidence"""
-    if n_clicks is None or n_clicks == 0:
+def update_evidence_selection(select_all_clicks, clear_clicks, checkbox_ids):
+    ctx = dash.callback_context
+    if not ctx.triggered:
         raise PreventUpdate
-    return []
-
-@app.callback(
-    Output("evidence-list", "children"),
-    Input("evidence-store", "data")
-)
-def display_evidence_list(evidence_list):
-    """Display current evidence selections"""
-    if not evidence_list:
-        return html.Span("No evidence selected.", className="text-muted")
     
-    items = []
-    for ev in evidence_list:
-        items.append(f"{ev['var']} = {ev['value']}")
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
-    return html.Div([
-        html.Strong("Evidence: "),
-        html.Span("; ".join(items))
-    ])
+    if button_id == 'select-all-evidence':
+        # Select all checkboxes
+        return [[checkbox_id['index']] for checkbox_id in checkbox_ids]
+    elif button_id == 'clear-evidence':
+        # Clear all checkboxes
+        return [[] for _ in checkbox_ids]
+    
+    raise PreventUpdate
 
 @app.callback(
     Output('mpe-results', 'children'),
@@ -708,11 +709,12 @@ def display_evidence_list(evidence_list):
     Output('notification-store', 'data'),
     Input('run-mpe-button', 'n_clicks'),
     State('stored-network', 'data'),
-    State('evidence-store', 'data'),
+    State({'type': 'evidence-value-dropdown', 'index': ALL}, 'value'),
+    State({'type': 'evidence-value-dropdown', 'index': ALL}, 'id'),
     State('session-id-store', 'data'),
     prevent_initial_call=True
 )
-def run_mpe(n_clicks, stored_network, evidence_list, session_id):
+def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id):
     """Run MPE computation"""
     if not n_clicks:
         raise PreventUpdate
@@ -731,26 +733,26 @@ def run_mpe(n_clicks, stored_network, evidence_list, session_id):
             create_error_notification("No network loaded", "Error")
         )
 
-    # Prepare evidence dictionary
+    # Build evidence dictionary from dropdowns
     evidence_dict = {}
-    if evidence_list:
-        for ev in evidence_list:
-            var = ev["var"]
-            val = ev["value"]
-            cpd = model.get_cpds(var)
-            if cpd and hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
-                state_names = cpd.state_names[var]
-                try:
-                    state_idx = state_names.index(val)
-                except ValueError:
-                    state_idx = None
-            else:
-                try:
-                    state_idx = int(val)
-                except:
-                    state_idx = None
-            if state_idx is not None:
-                evidence_dict[var] = state_idx
+    if evidence_values and evidence_ids:
+        for ev_id, val in zip(evidence_ids, evidence_values):
+            if val is not None:  # ignore if none
+                var = ev_id['index']
+                cpd = model.get_cpds(var)
+                if cpd and hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
+                    state_names = cpd.state_names[var]
+                    try:
+                        state_idx = state_names.index(val)
+                    except ValueError:
+                        state_idx = None
+                else:
+                    try:
+                        state_idx = int(val)
+                    except:
+                        state_idx = None
+                if state_idx is not None:
+                    evidence_dict[var] = state_idx
 
     try:
         # Perform MPE inference
