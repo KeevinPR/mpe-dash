@@ -216,7 +216,7 @@ app.layout = html.Div([
                             ),
                             "MPE GitHub"
                         ],
-                        href="https://github.com/pgmpy/pgmpy",
+                        href="https://github.com/KeevinPR/mpe-dash",
                         target="_blank",
                         className="btn btn-outline-info me-2"
                     ),
