@@ -125,28 +125,47 @@ def calculate_joint_probability(model: BayesianNetwork, assignment: dict) -> flo
         if cpd is None:
             # If a CPD is missing, skip (or one could assume uniform)
             continue
+        
+        # Ensure node_state is an integer
         node_state = assignment[node]
+        if not isinstance(node_state, int):
+            try:
+                node_state = int(node_state)
+            except (ValueError, TypeError):
+                raise ValueError(f"Node state for {node} must be an integer, got {type(node_state)}: {node_state}")
+        
+        # Get parent variables - in pgmpy TabularCPD, parents are in variables[1:]
+        parent_vars = cpd.variables[1:] if len(cpd.variables) > 1 else []
+        
         # Determine parent states for this assignment
         parent_states = []
-        if cpd.evidence:  # list of parent variables if any
-            for parent in cpd.evidence:
+        if parent_vars:  # list of parent variables if any
+            for parent in parent_vars:
                 parent_state = assignment[parent]
+                # Ensure parent_state is an integer
+                if not isinstance(parent_state, int):
+                    try:
+                        parent_state = int(parent_state)
+                    except (ValueError, TypeError):
+                        raise ValueError(f"Parent state for {parent} must be an integer, got {type(parent_state)}: {parent_state}")
                 parent_states.append(parent_state)
+        
         # Retrieve the probability value for this node's state given parent states
-        # TabularCPD stores values in an array accessible via state indices.
-        if not cpd.evidence:
-            # No parents: probability is just the single-column value for the state
-            prob_val = cpd.values[node_state]
+        # Use get_values() to get the CPD table in the correct 2D format
+        cpd_values = cpd.get_values()
+        
+        if not parent_vars:
+            # No parents: probability is the value for the state (single column)
+            prob_val = float(cpd_values[node_state, 0])
         else:
-            # With parents: need to index into cpd.values using parent states
-            # cpd.values shape: (node_cardinality x (prod of parents' cardinalities))
-            # Compute column index from parent_states list (assuming order matches cpd.evidence order)
+            # With parents: need to compute the column index from parent states
+            # cpd_values shape: (node_cardinality, prod of parents' cardinalities)
+            # Compute column index from parent_states list
             col_index = 0
             if parent_states:
                 # Calculate the index as a mixed radix number with parent state indices
-                # e.g., for evidence [P1, P2] with card [c1, c2]: index = P1_index * c2 + P2_index
-                # Generalized for multiple parents:
-                parent_cards = [model.get_cardinality(p) for p in cpd.evidence]
+                # e.g., for parents [P1, P2] with card [c1, c2]: index = P1_index * c2 + P2_index
+                parent_cards = [model.get_cardinality(p) for p in parent_vars]
                 # Multiply out indices: for each parent state, multiply by product of cards of subsequent parents
                 for idx, parent_state in enumerate(parent_states):
                     # product of cardinals for parents after this index
@@ -154,6 +173,8 @@ def calculate_joint_probability(model: BayesianNetwork, assignment: dict) -> flo
                     for card in parent_cards[idx+1:]:
                         remaining_cards *= card
                     col_index += parent_state * remaining_cards
-            prob_val = cpd.values[node_state][col_index]
+            # Ensure col_index is valid
+            col_index = int(col_index)
+            prob_val = float(cpd_values[node_state, col_index])
         prob *= prob_val
     return prob

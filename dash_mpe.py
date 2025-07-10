@@ -766,9 +766,29 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
         else:
             mpe_assignment = {}
 
-        # Combine with evidence
-        full_assignment = mpe_assignment.copy()
+        # Convert MPE assignment to state indices (pgmpy map_query returns state names, not indices)
+        full_assignment = {}
+        
+        # Add evidence variables with their indices
         for var, state_idx in evidence_dict.items():
+            full_assignment[var] = int(state_idx)
+        
+        # Add MPE variables, converting state names to indices if necessary
+        for var, state_value in mpe_assignment.items():
+            cpd = model.get_cpds(var)
+            if cpd and hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
+                # Convert state name to index
+                try:
+                    if isinstance(state_value, str):
+                        state_idx = cpd.state_names[var].index(state_value)
+                    else:
+                        state_idx = int(state_value)
+                except (ValueError, TypeError):
+                    # If conversion fails, assume it's already an index
+                    state_idx = int(state_value)
+            else:
+                # No state names, assume it's already an index
+                state_idx = int(state_value)
             full_assignment[var] = state_idx
 
         # Calculate joint probability
