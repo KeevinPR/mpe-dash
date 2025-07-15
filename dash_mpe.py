@@ -345,32 +345,54 @@ app.layout = html.Div([
                     ),
                 ], style={"textAlign": "center", "position": "relative"}),
                 
-                # MPE mode selection
+                # MPE mode selection with button toggle
                 html.Div([
-                    dbc.RadioItems(
-                        id='mpe-mode-selection',
-                        options=[
-                            {
-                                'label': html.Div([
-                                    html.Strong('Complete MPE'), 
-                                    html.Br(), 
-                                    html.Small('Find most probable assignment for all non-evidence variables', style={'color': '#6c757d'})
-                                ]),
-                                'value': 'complete'
-                            },
-                            {
-                                'label': html.Div([
-                                    html.Strong('Selective MPE'), 
-                                    html.Br(), 
-                                    html.Small('Choose specific target variables for MPE computation', style={'color': '#6c757d'})
-                                ]),
-                                'value': 'selective'
+                    dbc.ButtonGroup([
+                        dbc.Button(
+                            [
+                                html.Div([
+                                    html.Strong('Complete MPE'),
+                                    html.Br(),
+                                    html.Small('All non-evidence variables', style={'fontSize': '11px'})
+                                ])
+                            ],
+                            id='complete-mpe-button',
+                            color='primary',
+                            outline=False,
+                            style={
+                                'padding': '12px 20px',
+                                'borderRadius': '8px 0px 0px 8px',
+                                'fontWeight': '500',
+                                'minWidth': '200px',
+                                'height': 'auto',
+                                'transition': 'all 0.2s ease'
                             }
-                        ],
-                        value='complete',
-                        style={'textAlign': 'left', 'margin': '0 auto', 'maxWidth': '400px'}
-                    )
-                ], style={'textAlign': 'center', 'padding': '15px'})
+                        ),
+                        dbc.Button(
+                            [
+                                html.Div([
+                                    html.Strong('Selective MPE'),
+                                    html.Br(),
+                                    html.Small('Choose specific targets', style={'fontSize': '11px'})
+                                ])
+                            ],
+                            id='selective-mpe-button',
+                            color='outline-primary',
+                            outline=True,
+                            style={
+                                'padding': '12px 20px',
+                                'borderRadius': '0px 8px 8px 0px',
+                                'fontWeight': '400',
+                                'minWidth': '200px',
+                                'height': 'auto',
+                                'transition': 'all 0.2s ease'
+                            }
+                        )
+                    ], style={'width': '100%', 'justifyContent': 'center'})
+                ], style={'textAlign': 'center', 'padding': '15px'}),
+                
+                # Hidden store for MPE mode
+                dcc.Store(id='mpe-mode-selection', data='complete')
             ]),
 
             # (4) Target Variables Selection (only shown in selective mode)
@@ -810,10 +832,99 @@ def update_evidence_values(checkbox_values, stored_network):
         )
     return children
 
+# Handle MPE mode button clicks and styling
+@app.callback(
+    Output('complete-mpe-button', 'color'),
+    Output('complete-mpe-button', 'outline'),
+    Output('complete-mpe-button', 'style'),
+    Output('selective-mpe-button', 'color'),
+    Output('selective-mpe-button', 'outline'),
+    Output('selective-mpe-button', 'style'),
+    Output('mpe-mode-selection', 'data'),
+    Input('complete-mpe-button', 'n_clicks'),
+    Input('selective-mpe-button', 'n_clicks'),
+    State('mpe-mode-selection', 'data')
+)
+def handle_mpe_mode_selection(complete_clicks, selective_clicks, current_mode):
+    """Handle MPE mode button selection and update styles"""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        # Default state - Complete MPE selected
+        return (
+            'primary', False, {
+                'padding': '12px 20px',
+                'borderRadius': '8px 0px 0px 8px',
+                'fontWeight': '600',
+                'minWidth': '200px',
+                'height': 'auto',
+                'transition': 'all 0.2s ease',
+                'borderWidth': '2px'
+            },
+            'outline-primary', True, {
+                'padding': '12px 20px',
+                'borderRadius': '0px 8px 8px 0px',
+                'fontWeight': '400',
+                'minWidth': '200px',
+                'height': 'auto',
+                'transition': 'all 0.2s ease'
+            },
+            'complete'
+        )
+    
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    if button_id == 'complete-mpe-button':
+        # Complete MPE selected
+        return (
+            'primary', False, {
+                'padding': '12px 20px',
+                'borderRadius': '8px 0px 0px 8px',
+                'fontWeight': '600',
+                'minWidth': '200px',
+                'height': 'auto',
+                'transition': 'all 0.2s ease',
+                'borderWidth': '2px'
+            },
+            'outline-primary', True, {
+                'padding': '12px 20px',
+                'borderRadius': '0px 8px 8px 0px',
+                'fontWeight': '400',
+                'minWidth': '200px',
+                'height': 'auto',
+                'transition': 'all 0.2s ease'
+            },
+            'complete'
+        )
+    elif button_id == 'selective-mpe-button':
+        # Selective MPE selected
+        return (
+            'outline-primary', True, {
+                'padding': '12px 20px',
+                'borderRadius': '8px 0px 0px 8px',
+                'fontWeight': '400',
+                'minWidth': '200px',
+                'height': 'auto',
+                'transition': 'all 0.2s ease'
+            },
+            'primary', False, {
+                'padding': '12px 20px',
+                'borderRadius': '0px 8px 8px 0px',
+                'fontWeight': '600',
+                'minWidth': '200px',
+                'height': 'auto',
+                'transition': 'all 0.2s ease',
+                'borderWidth': '2px'
+            },
+            'selective'
+        )
+    
+    # Fallback
+    raise PreventUpdate
+
 # Show/hide target selection based on MPE mode
 @app.callback(
     Output('target-selection-card', 'style'),
-    Input('mpe-mode-selection', 'value')
+    Input('mpe-mode-selection', 'data')
 )
 def toggle_target_selection(mpe_mode):
     """Show target selection only in selective mode"""
@@ -945,7 +1056,7 @@ def update_evidence_selection(select_all_clicks, clear_clicks, checkbox_ids):
     State('stored-network', 'data'),
     State({'type': 'evidence-value-dropdown', 'index': ALL}, 'value'),
     State({'type': 'evidence-value-dropdown', 'index': ALL}, 'id'),
-    State('mpe-mode-selection', 'value'),
+    State('mpe-mode-selection', 'data'),
     State({'type': 'target-checkbox', 'index': ALL}, 'value'),
     State('session-id-store', 'data'),
     prevent_initial_call=True
