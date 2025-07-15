@@ -333,7 +333,99 @@ app.layout = html.Div([
                 html.Div(id='evidence-values-container')
             ]),
 
-            # (3) Run MPE
+            # (3) MPE Mode Selection
+            html.Div(className="card", children=[
+                html.Div([
+                    html.H3("3. Select MPE Mode", style={'display': 'inline-block', 'marginRight': '10px', 'textAlign': 'center'}),
+                    dbc.Button(
+                        html.I(className="fa fa-question-circle"),
+                        id="help-button-mpe-mode",
+                        color="link",
+                        style={"display": "inline-block", "verticalAlign": "middle", "padding": "0", "marginLeft": "5px"}
+                    ),
+                ], style={"textAlign": "center", "position": "relative"}),
+                
+                # MPE mode selection
+                html.Div([
+                    dbc.RadioItems(
+                        id='mpe-mode-selection',
+                        options=[
+                            {
+                                'label': html.Div([
+                                    html.Strong('Complete MPE'), 
+                                    html.Br(), 
+                                    html.Small('Find most probable assignment for all non-evidence variables', style={'color': '#6c757d'})
+                                ]),
+                                'value': 'complete'
+                            },
+                            {
+                                'label': html.Div([
+                                    html.Strong('Selective MPE'), 
+                                    html.Br(), 
+                                    html.Small('Choose specific target variables for MPE computation', style={'color': '#6c757d'})
+                                ]),
+                                'value': 'selective'
+                            }
+                        ],
+                        value='complete',
+                        style={'textAlign': 'left', 'margin': '0 auto', 'maxWidth': '400px'}
+                    )
+                ], style={'textAlign': 'center', 'padding': '15px'})
+            ]),
+
+            # (4) Target Variables Selection (only shown in selective mode)
+            html.Div(className="card", id='target-selection-card', style={'display': 'none'}, children=[
+                html.Div([
+                    html.H3("4. Select Target Variables", style={'display': 'inline-block', 'marginRight': '10px', 'textAlign': 'center'}),
+                    dbc.Button(
+                        html.I(className="fa fa-question-circle"),
+                        id="help-button-targets",
+                        color="link",
+                        style={"display": "inline-block", "verticalAlign": "middle", "padding": "0", "marginLeft": "5px"}
+                    ),
+                ], style={"textAlign": "center", "position": "relative"}),
+                
+                # Buttons for bulk selection
+                html.Div([
+                    dbc.Button(
+                        "Select All",
+                        id="select-all-targets",
+                        color="outline-primary",
+                        size="sm",
+                        style={'marginRight': '10px'}
+                    ),
+                    dbc.Button(
+                        "Clear All",
+                        id="clear-targets",
+                        color="outline-secondary",
+                        size="sm"
+                    )
+                ], style={'textAlign': 'center', 'marginBottom': '15px'}),
+                
+                # Checkbox container for target variables
+                html.Div(
+                    id='target-checkbox-container',
+                    style={
+                        'maxHeight': '200px',
+                        'overflowY': 'auto',
+                        'border': '1px solid #ddd',
+                        'borderRadius': '5px',
+                        'padding': '10px',
+                        'margin': '0 auto',
+                        'width': '80%',
+                        'backgroundColor': '#f8f9fa'
+                    }
+                ),
+                
+                # Info message about target selection
+                html.Div([
+                    html.I(className="fa fa-info-circle", style={'marginRight': '5px', 'color': '#6c757d'}),
+                    html.Span("Target variables automatically exclude evidence variables. At least one target must be selected.", 
+                             style={'fontSize': '11px', 'color': '#6c757d'})
+                ], style={'textAlign': 'center', 'marginTop': '8px'}),
+            ]),
+
+            # (5) Run MPE
             html.Div([
                 html.Div([
                     dbc.Button(
@@ -373,9 +465,13 @@ app.layout = html.Div([
                     layout={"name": "cose"},
                     style={"width": "100%", "height": "400px"},
                     stylesheet=[
-                        {"selector": "node", "style": {"label": "data(label)", "text-valign": "center", "text-halign": "center"}},
-                        {"selector": "[evidence = 'True']", 
-                         "style": {"background-color": "#97e6ff", "border-color": "#3b99fc", "border-width": "2px"}},
+                        {"selector": "node", "style": {"label": "data(label)", "text-valign": "center", "text-halign": "center", "width": "60px", "height": "60px"}},
+                        {"selector": "[node_type = 'evidence']", 
+                         "style": {"background-color": "#97e6ff", "border-color": "#3b99fc", "border-width": "3px"}},
+                        {"selector": "[node_type = 'mpe_target']", 
+                         "style": {"background-color": "#90EE90", "border-color": "#228B22", "border-width": "3px"}},
+                        {"selector": "[node_type = 'other']", 
+                         "style": {"background-color": "#f8f9fa", "border-color": "#6c757d", "border-width": "1px", "color": "#6c757d"}},
                         {"selector": "edge", 
                          "style": {"curve-style": "bezier", "target-arrow-color": "#ccc",
                                    "target-arrow-shape": "triangle", "arrow-scale": 1.2,
@@ -386,6 +482,8 @@ app.layout = html.Div([
 
             # Hidden stores
             dcc.Store(id='stored-network'),
+            dcc.Store(id='previous-evidence-selection', data=[]),
+            dcc.Store(id='previous-target-selection', data=[]),
         ])
     ),
     
@@ -446,6 +544,39 @@ app.layout = html.Div([
         ],
         id="help-popover-evidence",
         target="help-button-evidence",
+        placement="right",
+        is_open=False,
+        trigger="hover",
+    ),
+
+    dbc.Popover(
+        [
+            dbc.PopoverHeader("MPE Mode Selection", style={"backgroundColor": "#f8f9fa", "fontWeight": "bold"}),
+            dbc.PopoverBody([
+                html.P([html.Strong("Complete MPE:"), " Finds the most probable assignment for ALL non-evidence variables. This is the traditional MPE approach."]),
+                html.P([html.Strong("Selective MPE:"), " Allows you to choose specific target variables for MPE computation. Only finds the most probable assignment for selected targets."]),
+                html.P("Complete MPE is faster and covers the entire network. Selective MPE gives you control over which variables to focus on."),
+            ]),
+        ],
+        id="help-popover-mpe-mode",
+        target="help-button-mpe-mode",
+        placement="right",
+        is_open=False,
+        trigger="hover",
+    ),
+
+    dbc.Popover(
+        [
+            dbc.PopoverHeader("Target Variables", style={"backgroundColor": "#f8f9fa", "fontWeight": "bold"}),
+            dbc.PopoverBody([
+                html.P("Target variables are the specific nodes you want to find the most probable assignment for."),
+                html.P("In Selective MPE mode, only these variables will be computed. Other non-evidence variables will be marginalized out."),
+                html.P("Variables used as evidence cannot be selected as targets."),
+                html.P("At least one target variable must be selected in Selective MPE mode."),
+            ]),
+        ],
+        id="help-popover-targets",
+        target="help-button-targets",
         placement="right",
         is_open=False,
         trigger="hover",
@@ -679,6 +810,109 @@ def update_evidence_values(checkbox_values, stored_network):
         )
     return children
 
+# Show/hide target selection based on MPE mode
+@app.callback(
+    Output('target-selection-card', 'style'),
+    Input('mpe-mode-selection', 'value')
+)
+def toggle_target_selection(mpe_mode):
+    """Show target selection only in selective mode"""
+    if mpe_mode == 'selective':
+        return {'display': 'block'}
+    else:
+        return {'display': 'none'}
+
+# Populate target variables, excluding those in evidence
+@app.callback(
+    Output('target-checkbox-container', 'children'),
+    Output('previous-evidence-selection', 'data'),
+    Input({'type': 'evidence-checkbox', 'index': ALL}, 'value'),
+    State('stored-network', 'data'),
+    State('previous-evidence-selection', 'data'),
+    State('previous-target-selection', 'data')
+)
+def update_target_options(checkbox_values, stored_network, prev_evidence, prev_targets):
+    model = get_model(stored_network)
+    if not model:
+        return html.Div("No network loaded", style={'textAlign': 'center', 'color': '#666'}), []
+    
+    # Get currently selected evidence variables from checkboxes
+    current_evidence = []
+    ctx = dash.callback_context
+    if ctx.inputs_list and ctx.inputs_list[0]:
+        for input_info in ctx.inputs_list[0]:
+            if input_info['value']:  # If checkbox is checked
+                var_name = input_info['id']['index']
+                current_evidence.append(var_name)
+    
+    all_vars = set(model.nodes())
+    available = [v for v in all_vars if v not in current_evidence]
+
+    if not available:
+        return html.Div("No target variables available", style={'textAlign': 'center', 'color': '#666'}), current_evidence
+    
+    # Calculate which targets should remain selected:
+    # 1. Variables that were targets before and are still available
+    # 2. Variables that were removed from evidence and were targets before
+    newly_available = set(prev_evidence) - set(current_evidence)  # Variables removed from evidence
+    keep_selected = (set(prev_targets) & set(available)) | (newly_available & set(prev_targets))
+    
+    # Create checkboxes in a grid layout
+    checkboxes = []
+    for var in sorted(available):
+        # Pre-select if it should remain selected
+        initial_value = [var] if var in keep_selected else []
+        
+        checkboxes.append(
+            html.Div([
+                dcc.Checklist(
+                    id={'type': 'target-checkbox', 'index': var},
+                    options=[{'label': f' {var}', 'value': var}],
+                    value=initial_value,
+                    style={'margin': '0'}
+                )
+            ], style={'display': 'inline-block', 'width': '50%', 'marginBottom': '5px'})
+        )
+    
+    return html.Div(checkboxes, style={'columnCount': '2', 'columnGap': '20px'}), current_evidence
+
+# Callback to track target selections for intelligent management
+@app.callback(
+    Output('previous-target-selection', 'data'),
+    Input({'type': 'target-checkbox', 'index': ALL}, 'value')
+)
+def track_target_selections(target_checkbox_values):
+    """Track which targets are currently selected"""
+    selected_targets = []
+    for checkbox_value in target_checkbox_values or []:
+        if checkbox_value:  # If checkbox is checked
+            selected_targets.extend(checkbox_value)
+    return selected_targets
+
+# Callbacks for target selection buttons
+@app.callback(
+    Output({'type': 'target-checkbox', 'index': ALL}, 'value'),
+    [Input('select-all-targets', 'n_clicks'),
+     Input('clear-targets', 'n_clicks')],
+    [State({'type': 'target-checkbox', 'index': ALL}, 'id')],
+    prevent_initial_call=True
+)
+def update_target_selection(select_all_clicks, clear_clicks, checkbox_ids):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    if button_id == 'select-all-targets':
+        # Select all checkboxes
+        return [[checkbox_id['index']] for checkbox_id in checkbox_ids]
+    elif button_id == 'clear-targets':
+        # Clear all checkboxes
+        return [[] for _ in checkbox_ids]
+    
+    raise PreventUpdate
+
 # Callbacks for evidence selection buttons
 @app.callback(
     Output({'type': 'evidence-checkbox', 'index': ALL}, 'value'),
@@ -711,10 +945,12 @@ def update_evidence_selection(select_all_clicks, clear_clicks, checkbox_ids):
     State('stored-network', 'data'),
     State({'type': 'evidence-value-dropdown', 'index': ALL}, 'value'),
     State({'type': 'evidence-value-dropdown', 'index': ALL}, 'id'),
+    State('mpe-mode-selection', 'value'),
+    State({'type': 'target-checkbox', 'index': ALL}, 'value'),
     State('session-id-store', 'data'),
     prevent_initial_call=True
 )
-def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id):
+def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, mpe_mode, target_checkbox_values, session_id):
     """Run MPE computation"""
     if not n_clicks:
         raise PreventUpdate
@@ -754,12 +990,47 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
                 if state_idx is not None:
                     evidence_dict[var] = state_idx
 
+    # Extract selected target variables from checkboxes
+    selected_targets = []
+    if target_checkbox_values:
+        for checkbox_value in target_checkbox_values:
+            if checkbox_value:  # If checkbox is checked
+                selected_targets.extend(checkbox_value)
+
+    # Validate mode-specific requirements
+    if mpe_mode == 'selective':
+        if not selected_targets:
+            return (
+                html.Div("Please select at least one target variable for Selective MPE.", 
+                         style={'color': 'red', 'textAlign': 'center'}),
+                [],
+                create_error_notification("Please select at least one target variable for Selective MPE.", "Configuration Error")
+            )
+        
+        # Check for overlap between evidence and targets
+        overlap = set(evidence_dict.keys()) & set(selected_targets)
+        if overlap:
+            overlap_vars = ', '.join(overlap)
+            return (
+                html.Div(f"Variables cannot be both evidence and targets: {overlap_vars}", 
+                         style={'color': 'red', 'textAlign': 'center'}),
+                [],
+                create_error_notification(f"Variables cannot be both evidence and targets: {overlap_vars}", "Configuration Error")
+            )
+
     try:
         # Perform MPE inference
         infer = VariableElimination(model)
         all_vars = set(model.nodes())
         evidence_vars = set(evidence_dict.keys())
-        query_vars = list(all_vars - evidence_vars)
+        
+        # Determine query variables based on MPE mode
+        if mpe_mode == 'complete':
+            # Complete MPE: all non-evidence variables
+            query_vars = list(all_vars - evidence_vars)
+        else:  # selective
+            # Selective MPE: only selected target variables (excluding evidence)
+            query_vars = [var for var in selected_targets if var not in evidence_vars]
 
         if len(query_vars) > 0:
             mpe_assignment = infer.map_query(variables=query_vars, evidence=evidence_dict)
@@ -767,11 +1038,11 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
             mpe_assignment = {}
 
         # Convert MPE assignment to state indices (pgmpy map_query returns state names, not indices)
-        full_assignment = {}
+        result_assignment = {}
         
         # Add evidence variables with their indices
         for var, state_idx in evidence_dict.items():
-            full_assignment[var] = int(state_idx)
+            result_assignment[var] = int(state_idx)
         
         # Add MPE variables, converting state names to indices if necessary
         for var, state_value in mpe_assignment.items():
@@ -789,14 +1060,31 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
             else:
                 # No state names, assume it's already an index
                 state_idx = int(state_value)
-            full_assignment[var] = state_idx
+            result_assignment[var] = state_idx
 
-        # Calculate joint probability
-        joint_prob = calculate_joint_probability(model, full_assignment)
+        # For complete MPE, calculate joint probability of full assignment
+        # For selective MPE, we need full assignment for probability calculation
+        if mpe_mode == 'complete':
+            full_assignment = result_assignment
+            joint_prob = calculate_joint_probability(model, full_assignment)
+        else:
+            # For selective MPE, we need to include all variables for joint probability calculation
+            # but we'll only display the selected targets + evidence in results
+            full_assignment = result_assignment.copy()
+            
+            # Add remaining variables with dummy values (we won't display these)
+            remaining_vars = all_vars - set(result_assignment.keys())
+            for var in remaining_vars:
+                full_assignment[var] = 0  # Use first state as dummy
+            
+            joint_prob = calculate_joint_probability(model, full_assignment)
 
         # Format results
         assignment_items = []
-        for var, state_idx in sorted(full_assignment.items()):
+        evidence_items = []
+        target_items = []
+        
+        for var, state_idx in sorted(result_assignment.items()):
             label = str(state_idx)
             cpd = model.get_cpds(var)
             if cpd and hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
@@ -804,14 +1092,41 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
                     label = str(cpd.state_names[var][state_idx])
                 except:
                     label = str(state_idx)
-            assignment_items.append(f"{var} = {label}")
+            
+            item = f"{var} = {label}"
+            assignment_items.append(item)
+            
+            # Categorize for better display
+            if var in evidence_dict:
+                evidence_items.append(item)
+            else:
+                target_items.append(item)
 
-        # Create results table
-        df = pd.DataFrame({
-            'Variable': [item.split(' = ')[0] for item in assignment_items],
-            'MPE Value': [item.split(' = ')[1] for item in assignment_items]
-        })
+        # Create results table with categories
+        table_data = []
+        
+        # Add evidence variables
+        for item in evidence_items:
+            var_name = item.split(' = ')[0]
+            var_value = item.split(' = ')[1]
+            table_data.append({
+                'Variable': var_name,
+                'Value': var_value,
+                'Type': 'Evidence'
+            })
+        
+        # Add target variables
+        for item in target_items:
+            var_name = item.split(' = ')[0]
+            var_value = item.split(' = ')[1]
+            table_data.append({
+                'Variable': var_name,
+                'Value': var_value,
+                'Type': 'MPE Target'
+            })
 
+        df = pd.DataFrame(table_data)
+        
         table = dbc.Table.from_dataframe(
             df,
             bordered=True,
@@ -821,9 +1136,14 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
             className="mt-2"
         )
 
+        # Create mode-specific title
+        mode_title = "Complete MPE Results" if mpe_mode == 'complete' else "Selective MPE Results"
+        mode_desc = "Most probable assignment for all non-evidence variables" if mpe_mode == 'complete' else f"Most probable assignment for {len(target_items)} selected target variables"
+
         result_card = dbc.Card(
             dbc.CardBody([
-                html.H4("MPE Results", className="card-title", style={'textAlign': 'center'}),
+                html.H4(mode_title, className="card-title", style={'textAlign': 'center'}),
+                html.P(mode_desc, style={'textAlign': 'center', 'fontSize': '14px', 'color': '#6c757d', 'marginBottom': '10px'}),
                 html.P(f"Joint Probability: {joint_prob:.6g}", style={'textAlign': 'center', 'fontSize': '16px'}),
                 table
             ])
@@ -832,20 +1152,35 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, session_id)
         # Update cytoscape elements
         new_elements = []
         for var in model.nodes():
-            state_idx = full_assignment.get(var)
-            label = str(state_idx)
-            cpd = model.get_cpds(var)
-            if cpd and hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
-                try:
-                    label = str(cpd.state_names[var][state_idx])
-                except:
-                    label = str(state_idx)
+            # Determine node appearance based on role and mode
+            node_type = "other"
+            display_label = var
+            
+            if var in result_assignment:
+                state_idx = result_assignment[var]
+                label = str(state_idx)
+                cpd = model.get_cpds(var)
+                if cpd and hasattr(cpd, "state_names") and cpd.state_names and var in cpd.state_names:
+                    try:
+                        label = str(cpd.state_names[var][state_idx])
+                    except:
+                        label = str(state_idx)
+                display_label = f"{var}: {label}"
+                
+                if var in evidence_dict:
+                    node_type = "evidence"
+                else:
+                    node_type = "mpe_target"
+            else:
+                # Variable not in result (only happens in selective mode)
+                node_type = "other"
+                display_label = f"{var}: ?"
             
             new_elements.append({
                 "data": {
                     "id": var,
-                    "label": f"{var}: {label}",
-                    "evidence": "True" if var in evidence_dict else "False"
+                    "label": display_label,
+                    "node_type": node_type
                 }
             })
         
@@ -928,6 +1263,26 @@ def toggle_default_dataset_popover(n, is_open):
     State("help-popover-evidence", "is_open")
 )
 def toggle_evidence_popover(n, is_open):
+    if n:
+        return not is_open
+    return is_open
+
+@app.callback(
+    Output("help-popover-mpe-mode", "is_open"),
+    Input("help-button-mpe-mode", "n_clicks"),
+    State("help-popover-mpe-mode", "is_open")
+)
+def toggle_mpe_mode_popover(n, is_open):
+    if n:
+        return not is_open
+    return is_open
+
+@app.callback(
+    Output("help-popover-targets", "is_open"),
+    Input("help-button-targets", "n_clicks"),
+    State("help-popover-targets", "is_open")
+)
+def toggle_targets_popover(n, is_open):
     if n:
         return not is_open
     return is_open
