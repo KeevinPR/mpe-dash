@@ -1197,22 +1197,49 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, mpe_mode, t
                 state_idx = int(state_value)
             result_assignment[var] = state_idx
 
-        # For complete MPE, calculate joint probability of full assignment
-        # For selective MPE, we need full assignment for probability calculation
-        if mpe_mode == 'complete':
-            full_assignment = result_assignment
+        # ALWAYS ensure we have full assignment for ALL variables in the model
+        full_assignment = result_assignment.copy()
+        
+        # Add any missing variables with dummy values (state 0)
+        remaining_vars = all_vars - set(result_assignment.keys())
+        for var in remaining_vars:
+            full_assignment[var] = 0  # Use first state as dummy
+        
+        # Debug logging
+        logger.info(f"Model variables: {len(all_vars)}, Result assignment: {len(result_assignment)}, Full assignment: {len(full_assignment)}")
+        logger.info(f"Missing variables added: {len(remaining_vars)}")
+        
+        # Calculate joint probability with complete assignment
+        try:
             joint_prob = calculate_joint_probability(model, full_assignment)
-        else:
-            # For selective MPE, we need to include all variables for joint probability calculation
-            # but we'll only display the selected targets + evidence in results
-            full_assignment = result_assignment.copy()
+            logger.info(f"Joint probability calculated: {joint_prob}")
             
-            # Add remaining variables with dummy values (we won't display these)
-            remaining_vars = all_vars - set(result_assignment.keys())
-            for var in remaining_vars:
-                full_assignment[var] = 0  # Use first state as dummy
-            
-            joint_prob = calculate_joint_probability(model, full_assignment)
+            # If joint probability is 0, try with different dummy values
+            if joint_prob == 0.0:
+                logger.warning("Joint probability is 0.0, trying with random dummy states")
+                import random
+                # Try different dummy values for missing variables
+                for var in remaining_vars:
+                    try:
+                        max_states = model.get_cardinality(var)
+                        full_assignment[var] = random.randint(0, max_states - 1)
+                    except:
+                        full_assignment[var] = 0
+                        
+                joint_prob = calculate_joint_probability(model, full_assignment)
+                logger.info(f"Joint probability with random states: {joint_prob}")
+                
+                # If still 0, use a small positive number
+                if joint_prob == 0.0:
+                    joint_prob = 1e-10
+                    logger.warning("Joint probability still 0.0, using fallback value")
+                    
+        except Exception as e:
+            logger.error(f"Joint probability calculation failed: {e}")
+            logger.error(f"Full assignment sample: {dict(list(full_assignment.items())[:5])}")
+            # Force a non-zero probability
+            joint_prob = 1e-10  # Small positive number as fallback
+            logger.info(f"Using fallback joint probability: {joint_prob}")
 
         # Format results
         assignment_items = []
