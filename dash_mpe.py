@@ -647,14 +647,54 @@ def load_network(contents, filename, use_default_value):
     """Load network and update all dependent components"""
     print(f"📞 CALLBACK: use_default={use_default_value}, has_file={contents is not None}")
     
+    # Get the trigger that caused the callback
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return None, "No network selected.", use_default_value, [], {'display': 'none'}
+    
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    print(f"🔍 TRIGGER: {trigger_id}")
+    
     global cached_model
     cached_model = None
     
     # Default network visualization style (hidden)
     viz_style = {'display': 'none'}
     
-    # PRIORITY 1: Handle file upload
+    # HANDLE DEFAULT CHECKBOX - modify contents instead of returning immediately
+    if trigger_id == 'use-default-network' and 'default' in use_default_value:
+        print("✅ DEFAULT CHECKBOX CHECKED!")
+        try:
+            # Use relative path from current directory
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            default_path = os.path.join(current_dir, 'models', 'asia.bif')
+            
+            if not os.path.exists(default_path):
+                default_path = 'models/asia.bif'
+            
+            print(f"📁 Loading default from: {default_path}")
+            
+            with open(default_path, 'rb') as f:
+                content_bytes = f.read()
+            
+            # Convert to the same format as file upload
+            content_string = base64.b64encode(content_bytes).decode('utf-8')
+            contents = f"data:application/octet-stream;base64,{content_string}"
+            filename = 'asia.bif'
+            print("✅ Default content prepared, continuing to process...")
+            
+        except Exception as e:
+            print(f"❌ ERROR loading default: {e}")
+            return None, f"Error reading default network: {e}", use_default_value, [], viz_style
+    
+    # HANDLE UNCHECKING DEFAULT CHECKBOX
+    if trigger_id == 'use-default-network' and 'default' not in use_default_value:
+        print("❌ Default checkbox UNCHECKED - clearing network")
+        return None, "No network selected.", use_default_value, [], viz_style
+    
+    # PROCESS CONTENTS (either from file upload or default)
     if contents is not None:
+        print("📁 PROCESSING CONTENTS!")
         content_type, content_string = contents.split(',')
         try:
             content_bytes = base64.b64decode(content_string)
@@ -673,7 +713,10 @@ def load_network(contents, filename, use_default_value):
             
             viz_style = {'display': 'block'}
             msg = f"Successfully loaded network from {filename}."
-            print(f"✅ File loaded: {filename}")
+            print(f"✅ Network loaded: {filename}")
+            
+            # Determine checkbox state based on trigger
+            checkbox_value = use_default_value if trigger_id == 'use-default-network' else []
             
             return (
                 {
@@ -682,65 +725,16 @@ def load_network(contents, filename, use_default_value):
                     'content': content_string
                 },
                 msg,
-                [],  # Uncheck default
+                checkbox_value,
                 elements,
                 viz_style
             )
         except Exception as e:
-            print(f"❌ File error: {e}")
-            return None, f"Error loading {filename}: {e}", use_default_value, [], viz_style
-    
-    # PRIORITY 2: Handle default checkbox
-    if 'default' in use_default_value:
-        print("✅ DEFAULT CHECKBOX CHECKED!")
-        try:
-            # Use relative path from current directory
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            default_path = os.path.join(current_dir, 'models', 'asia.bif')
-            
-            if not os.path.exists(default_path):
-                default_path = 'models/asia.bif'
-            
-            print(f"📁 Loading: {default_path}")
-            
-            with open(default_path, 'rb') as f:
-                content_bytes = f.read()
-            
-            model = load_model_from_bytes(content_bytes, 'asia.bif')
-            print(f"✅ Model loaded: {len(model.nodes())} nodes")
-            
-            elements = []
-            for var in model.nodes():
-                elements.append({
-                    "data": {"id": var, "label": var, "evidence": "False"}
-                })
-            for u, v in model.edges():
-                elements.append({
-                    "data": {"source": u, "target": v}
-                })
-            
-            viz_style = {'display': 'block'}
-            msg = "Using default network: asia.bif"
-            
-            print("🔄 Returning successful result")
-            return (
-                {
-                    'network_name': 'asia.bif',
-                    'network_type': 'path',
-                    'content': default_path
-                },
-                msg,
-                use_default_value,
-                elements,
-                viz_style
-            )
-            
-        except Exception as e:
-            print(f"❌ ERROR: {e}")
-            return None, f"Error reading default network: {e}", use_default_value, [], viz_style
-    else:
-        print("❌ Default checkbox NOT checked")
+            print(f"❌ Error processing contents: {e}")
+            return None, f"Error loading {filename}: {e}", [], [], viz_style
 
+    # FALLBACK
+    print("🤷 No valid action taken")
     return None, "No network selected.", use_default_value, [], viz_style
 
 # Populate the evidence dropdown only if a model is available
@@ -937,8 +931,8 @@ def toggle_target_selection(mpe_mode):
 @app.callback(
     Output('target-checkbox-container', 'children'),
     Output('previous-evidence-selection', 'data'),
-    Input({'type': 'evidence-checkbox', 'index': ALL}, 'value'),
-    State('stored-network', 'data'),
+    [Input({'type': 'evidence-checkbox', 'index': ALL}, 'value'),
+     Input('stored-network', 'data')],  # Listen to network changes
     State('previous-evidence-selection', 'data'),
     State('previous-target-selection', 'data')
 )
@@ -950,7 +944,8 @@ def update_target_options(checkbox_values, stored_network, prev_evidence, prev_t
     # Get currently selected evidence variables from checkboxes
     current_evidence = []
     ctx = dash.callback_context
-    if ctx.inputs_list and ctx.inputs_list[0]:
+    # Find the evidence checkbox inputs (first input in list)
+    if ctx.inputs_list and len(ctx.inputs_list) > 0 and ctx.inputs_list[0]:
         for input_info in ctx.inputs_list[0]:
             if input_info['value']:  # If checkbox is checked
                 var_name = input_info['id']['index']
@@ -986,6 +981,16 @@ def update_target_options(checkbox_values, stored_network, prev_evidence, prev_t
         )
     
     return html.Div(checkboxes, style={'columnCount': '2', 'columnGap': '20px'}), current_evidence
+
+# Callback to clear MPE results when network changes
+@app.callback(
+    Output('mpe-results', 'children', allow_duplicate=True),
+    Input('stored-network', 'data'),
+    prevent_initial_call=True
+)
+def clear_results_on_network_change(stored_network):
+    """Clear MPE results when a new network is loaded"""
+    return html.Div()  # Empty div - clears previous results
 
 # Callback to track target selections for intelligent management
 @app.callback(
