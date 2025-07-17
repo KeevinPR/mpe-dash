@@ -380,14 +380,14 @@ def get_system_resources():
             'memory_percent_used': 30.0
         }
 
-def is_network_large(model, evidence_vars=None, safety_factor=0.5):
+def is_network_large(model, evidence_vars=None, safety_factor=0.7):
     """
     Fast network size detection with robust error handling
     
     Parameters:
     - model: Bayesian Network
     - evidence_vars: Set of evidence variables (reduce complexity)
-    - safety_factor: Use only 50% of available memory for safety
+    - safety_factor: Use only 70% of available memory for safety
     
     Returns:
     - bool: True if network is too large for exact inference
