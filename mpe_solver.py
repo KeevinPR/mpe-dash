@@ -233,8 +233,16 @@ def approximate_mpe_sampling(model, evidence_dict, query_vars, n_samples=1000, a
     if len(query_vars) > 20 or len(model.nodes()) > 40:
         return ultra_simple_mpe(model, evidence_dict, query_vars)
     
-    # Strategy 2: Try lightweight sampling
-    if algorithm == 'simple' or True:  # Force simple for now
+    # Strategy 2: Try lightweight sampling for medium networks
+    if algorithm == 'simple':
+        return ultra_simple_mpe(model, evidence_dict, query_vars)
+    
+    # Try real sampling for small-medium networks with SWAP protection
+    if len(query_vars) <= 10 and len(model.nodes()) <= 25:
+        # Small enough for real sampling - try it
+        pass  # Continue to Strategy 3
+    else:
+        # Too risky even with SWAP - use simple
         return ultra_simple_mpe(model, evidence_dict, query_vars)
     
     # Strategy 3: Try pgmpy sampling (currently disabled due to memory issues)
