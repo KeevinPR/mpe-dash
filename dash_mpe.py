@@ -1130,8 +1130,9 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, mpe_mode, t
             )
 
     try:
-        # Perform MPE inference
-        infer = VariableElimination(model)
+        # Import the new functions
+        from mpe_solver import is_network_large, approximate_mpe_sampling
+        
         all_vars = set(model.nodes())
         evidence_vars = set(evidence_dict.keys())
         
@@ -1143,8 +1144,31 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, mpe_mode, t
             # Selective MPE: only selected target variables (excluding evidence)
             query_vars = [var for var in selected_targets if var not in evidence_vars]
 
+        # Check if network is too large for exact inference using sophisticated analysis
+        use_approximate, diagnostics = is_network_large(model, evidence_vars=evidence_vars)
+        confidence_score = None
+        
+        # Log diagnostic information
+        logger.info(f"Network analysis: {diagnostics.get('recommended_algorithm', 'unknown')} algorithm recommended")
+        logger.info(f"Estimated memory: {diagnostics.get('estimated_memory_gb', 0):.2f} GB")
+        logger.info(f"Available memory: {diagnostics.get('available_memory_gb', 0):.2f} GB")
+        if diagnostics.get('reason'):
+            logger.info(f"Reason: {diagnostics['reason']}")
+        if diagnostics.get('error'):
+            logger.warning(f"Analysis error: {diagnostics['error']}")
+        
         if len(query_vars) > 0:
-            mpe_assignment = infer.map_query(variables=query_vars, evidence=evidence_dict)
+            if use_approximate:
+                # Use approximate MPE for large networks
+                logger.info("Using approximate MPE (sampling) for large network")
+                mpe_assignment, confidence_score = approximate_mpe_sampling(
+                    model, evidence_dict, query_vars, n_samples=5000
+                )
+            else:
+                # Use exact MPE for small networks
+                logger.info("Using exact MPE (Variable Elimination)")
+                infer = VariableElimination(model)
+                mpe_assignment = infer.map_query(variables=query_vars, evidence=evidence_dict)
         else:
             mpe_assignment = {}
 
@@ -1247,14 +1271,54 @@ def run_mpe(n_clicks, stored_network, evidence_values, evidence_ids, mpe_mode, t
             className="mt-2"
         )
 
-        # Create mode-specific title
+        # Create mode-specific title and algorithm info
         mode_title = "Complete MPE Results" if mpe_mode == 'complete' else "Selective MPE Results"
         mode_desc = "Most probable assignment for all non-evidence variables" if mpe_mode == 'complete' else f"Most probable assignment for {len(target_items)} selected target variables"
+        
+        # Add algorithm information with diagnostics
+        algorithm_info = []
+        if use_approximate:
+            algorithm_info.append(
+                html.Div([
+                    html.I(className="fa fa-info-circle", style={'marginRight': '5px', 'color': '#17a2b8'}),
+                    html.Span("Approximate MPE (Sampling Algorithm)", style={'fontWeight': 'bold', 'color': '#17a2b8'}),
+                ], style={'textAlign': 'center', 'marginBottom': '5px'})
+            )
+            
+            # Add diagnostic details
+            reason = diagnostics.get('reason', '')
+            if reason:
+                algorithm_info.append(
+                    html.P(f"Reason: {reason}", 
+                           style={'textAlign': 'center', 'fontSize': '12px', 'color': '#6c757d', 'marginBottom': '5px'})
+                )
+            
+            if confidence_score is not None:
+                algorithm_info.append(
+                    html.P(f"Confidence Score: {confidence_score:.3f}", 
+                           style={'textAlign': 'center', 'fontSize': '14px', 'color': '#28a745', 'marginBottom': '5px'})
+                )
+        else:
+            algorithm_info.append(
+                html.Div([
+                    html.I(className="fa fa-check-circle", style={'marginRight': '5px', 'color': '#28a745'}),
+                    html.Span("Exact MPE (Variable Elimination)", style={'fontWeight': 'bold', 'color': '#28a745'}),
+                ], style={'textAlign': 'center', 'marginBottom': '5px'})
+            )
+            
+            # Add memory info for exact algorithm too
+            reason = diagnostics.get('reason', '')
+            if reason:
+                algorithm_info.append(
+                    html.P(f"Analysis: {reason}", 
+                           style={'textAlign': 'center', 'fontSize': '12px', 'color': '#6c757d', 'marginBottom': '5px'})
+                )
 
         result_card = dbc.Card(
             dbc.CardBody([
                 html.H4(mode_title, className="card-title", style={'textAlign': 'center'}),
                 html.P(mode_desc, style={'textAlign': 'center', 'fontSize': '14px', 'color': '#6c757d', 'marginBottom': '10px'}),
+                *algorithm_info,
                 html.P(f"Joint Probability: {joint_prob:.6g}", style={'textAlign': 'center', 'fontSize': '16px'}),
                 table
             ])
