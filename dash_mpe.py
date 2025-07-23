@@ -575,8 +575,8 @@ app.layout = html.Div([
         [
             dbc.PopoverHeader("MPE Mode Selection", style={"backgroundColor": "#f8f9fa", "fontWeight": "bold"}),
             dbc.PopoverBody([
-                html.P([html.Strong("Complete MPE:"), " Finds the most probable assignment for ALL non-evidence variables. This is the traditional MPE approach."]),
-                html.P([html.Strong("Selective MPE:"), " Allows you to choose specific target variables for MPE computation. Only finds the most probable assignment for selected targets."]),
+                html.P([html.Strong("Global MPE:"), " Finds the most probable assignment for ALL non-evidence variables. This is the traditional MPE approach."]),
+                html.P([html.Strong("Local MPE:"), " Allows you to choose specific target variables for MPE computation. Only finds the most probable assignment for selected targets."]),
                 html.P("Complete MPE is faster and covers the entire network. Selective MPE gives you control over which variables to focus on."),
             ]),
         ],
